@@ -1,0 +1,101 @@
+#README FOR OUTPUTS OF GMINER
+
+#GMINER's git is here https://github.com/witseie/ADME/tree/master/genome_mining
+#You will need to clone the bin file into your script directory too
+#Input files are a list of indexed, zipped VCF files
+#Config files will need to be adjusted for input/outputs etc
+#Note there are gene lists needed for filtering files (overlapping  adme and non-adme genes are common) (default is /spaces/ADME-SHARED/aux/core_extended_list.txt)
+
+#Output descriptions:
+
+#bcftools stat results are parsed to produce info relevant to the input file:
+	"GENE_NAME"-H3AGSK-core_statFile
+
+#After splitting multi-allelic variants and apply a name to ID based on CHR-POS-A1-A2, these processed files are sent on to vep, plink and snpEff
+
+#frequencies are calculated by plink, and allele order is kept - (note not MAF always - the variant allele frq is reported)
+#frq file is named as:
+	"GENE_NAME"-H3AGSK-core_freqFilename.frq
+
+#vep annotates and retrives functional prediction scores for each variant
+#vep file is named as:
+	"GENE_NAME"-H3AGSK-core_vepFilename.vep
+
+#these are merged together with an in house python script in /bin/
+#vep-frq merged file is named as:
+"GENE_NAME"-H3AGSK-core_vepfreqmerged.txt
+
+#snpEFF provides annotations in vcf output format along with counts and an html report
+#the annotations (as by variant type) seems to match vep's with the exception of vep also adding an impact of "splice region variant" if
+	# "A sequence variant in which a change has occurred within the region of the splice site, either within 1-3 bases of the exon or 3-8 bases of the intron"
+	"GENE_NAME"-H3AGSK-core.genes.txt
+	"GENE_NAME"-H3AGSK-core.html
+	"GENE_NAME"-H3AGSK-core_sneff.vcf.gz
+
+
+#Counting and filtering scripts produce subsets of vep-frq (annotated+frq) files with a focus on missense variants
+#First a subset of the file containing only variants belonging to ADME genes, and the canonical transcript for that gene is produced
+#It is filtered for a positive allele frequency
+#Additional files are produced at 1 and 5 % allele frequency cutoffs
+	"GENE_NAME"-H3AGSK-core_canonical_adme_only_1p.txt
+	"GENE_NAME"-H3AGSK-core_canonical_adme_only_5p.txt
+	"GENE_NAME"-H3AGSK-core_canonical_adme_only.txt
+
+
+#Counts of variant types (the consequence - missense, intronic etc.) are produced
+#Additional files are produced at 1 and 5 % allele frequency cutoffs
+	"GENE_NAME"-H3AGSK-core_canonical_counts_adme_only_1p.txt
+	"GENE_NAME"-H3AGSK-core_canonical_counts_adme_only_5p.txt
+	"GENE_NAME"-H3AGSK-core_canonical_counts_adme_only.txt
+
+
+#Subset of vepfrq for missense variants only, and with frq cutoffs at 1 and 5 % (includes "missense_variant,splice_region_variant")
+	"GENE_NAME"-H3AGSK-core_missense_can_adme_only_1p.txt
+	"GENE_NAME"-H3AGSK-core_missense_can_adme_only_5p.txt
+	"GENE_NAME"-H3AGSK-core_missense_can_adme_only.txt
+
+#Missense variants are then filtered by various scoring parameters:
+
+#The first set of filters applies to dbNSFP best four tools for deleterious variants accross all genes (MetaLR, MetaSVM,VEST, and FATHMM)
+#dbNSFP paper- https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4752381/
+
+#If one of these four meets cutoff scores it is placed in the following files:
+	"GENE_NAME"-H3AGSK-core_missense_can_1of4_only_1p.txt
+	"GENE_NAME"-H3AGSK-core_missense_can_1of4_only_5p.txt
+	"GENE_NAME"-H3AGSK-core_missense_can_1of4_only.txt
+
+#If cutoff is met for all four of these tools it is placed in this file (NB - not exclusively with regards to files above):
+	"GENE_NAME"-H3AGSK-core_missense_can_all4tools_only_1p.txt
+	"GENE_NAME"-H3AGSK-core_missense_can_all4tools_only_5p.txt
+	"GENE_NAME"-H3AGSK-core_missense_can_all4tools_only.txt
+
+
+#There is a paper suggesting a model for ADME variant prediction based on known ADME deleterious variants:
+# ADME Model paper - https://www.nature.com/articles/s41397-018-0044-2#Sec14
+#They provide ADJUSTED cutoffs for prediction - and these are used in this model
+#These filters are based on the following Five tools - (LRT, MutationAssessor, PROVEAN, VEST3 and CADD)
+#In a similar fashion - if cutoffs are met for at least one of these:	
+	"GENE_NAME"-H3AGSK-core_ADME_model_Pred_1o5_1p.txt
+	"GENE_NAME"-H3AGSK-core_ADME_model_Pred_1o5_5p.txt
+	"GENE_NAME"-H3AGSK-core_ADME_model_Pred_1o5.txt
+#And by following the model  - if cutoffs are met for all five of these
+	"GENE_NAME"-H3AGSK-core_ADME_model_Pred_ALL_1p.txt
+	"GENE_NAME"-H3AGSK-core_ADME_model_Pred_ALL_5p.txt
+	"GENE_NAME"-H3AGSK-core_ADME_model_Pred_ALL.txt
+
+#LoFTEE is used to assess LOF type variants in the data 
+#LoFTEE is available at https://github.com/konradjk/loftee
+#There are two possible annotations for stop loss, frameshifts and splice variants - HC (High Conf) or LC (Low Conf)
+#The first outputs are based on adme genes only, but also include non-canonical transcripts
+	"GENE_NAME"-H3AGSK-core_HC_LOF_noncan.txt
+	"GENE_NAME"-H3AGSK-core_LC_LOF_noncan.txt
+
+#These are based on adme genes only, but ONLY for canonical transcripts
+	"GENE_NAME"-H3AGSK-core_HC_LOF_can.txt
+	"GENE_NAME"-H3AGSK-core_LC_LOF_can.txt
+
+#These are the HC variants that are present above 1% for both canonical and non canonical transcripts
+	"GENE_NAME"-H3AGSK-core_HC_LOF_can_1p.txt
+	"GENE_NAME"-H3AGSK-core_HC_LOF_noncan_1p.txt
+
+

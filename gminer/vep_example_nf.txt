@@ -1,0 +1,23 @@
+//params $dircache
+//params $dirplugins
+
+process vep {
+        module 'perl526'
+  maxForks 8
+  input:
+  set val(symbol), file(vcf) from anno_vcf2_ch
+  output:
+   set val(symbol), file(output) into vep_ch  
+   file("*summary.html")
+     publishDir  pattern: '*.vep', path : "${out_dir}/${symbol}", mode: 'copy'
+   script:
+    output="${symbol}.vep"
+    """
+    vep --ASSEMBLY GRCh37  -i $vcf -o ${symbol}.vep --dir_cache $dircache --cache --port 3337 --symbol --canonical --ccds --tab --dir_plugins $dirplugins --plugin CADD,/dataB/aux/37/cadd/whole_genome_SNVs.tsv.gz --plugin dbNSFP,/dataB/aux/37/cadd/dbNSFP_hg19.gz,ALL   
+    """
+}
+//to add the Condel plugin use the additional options from this example (srun vep -i ~/example_vcfs/kga_afr/1-ARNT.vcf.gz --cache --dir_cache /dataB/aux/37/cadd/vep_caches/ --port 3337 --dir_plugins /opt/exp_soft/bioinf/ensembl-vep/plugins/ --sift b --polyphen b --plugin Condel,/dataB/aux/37/cadd/config/Condel/,b,2
+
+//bash example
+// vep --ASSEMBLY GRCh37  -i ~/example_vcfs/kga_afr/1-ARNT.vcf.gz -o arnt_cool_ones.txt --dir_cache /dataB/aux/37/cadd/vep_caches/ --cache --port 3337 --symbol --canonical --ccds --tab --check_existing --sift s --dir_plugins /opt/exp_soft/bioinf/ensembl-vep/plugins/ --plugin CADD,/dataB/aux/37/cadd/whole_genome_SNVs.tsv.gz --sift b --polyphen b --plugin Condel,/dataB/aux/37/cadd/config/Condel/,b,2 --plugin dbNSFP,/dataB/aux/37/cadd/dbNSFP_hg19.gz,MetaSVM_pred,MetaSVM_score,MetaSVM_rankscore,MetaLR_pred,MetaLR_score,MetaLR_rankscore,VEST3_score,VEST3_rankscore,FATHMM_pred,FATHMM_score,FATHMM_converted_rankscore,CADD_phred,CADD_raw,CADD_raw_rankscore,DANN_rankscore,DANN_score,LRT_converted_rankscore,LRT_pred,LRT_score,fathmm-MKL_coding_group,fathmm-MKL_coding_pred,fathmm-MKL_coding_rankscore,fathmm-MKL_coding_score,PROVEAN_converted_rankscore,PROVEAN_pred,PROVEAN_score,MutationAssessor_UniprotID,MutationAssessor_pred,MutationAssessor_score,MutationAssessor_score_rankscore,MutationAssessor_variant
+ 
