@@ -1,0 +1,45 @@
+#!/bin/bash
+#PBS -P CBBI0930
+#PBS -N relax_MUT
+#PBS -l select=2:ncpus=24:mpiprocs=24
+#PBS -l walltime=01:00:00
+#PBS -q normal
+#PBS -m be
+#PBS -M jdarocha1@gmail.com
+#PBS -r n
+#PBS -o /mnt/lustre/users/jrocha/mutations_g6pd/MUT/relax
+#PBS -e /mnt/lustre/users/jrocha/mutations_g6pd/MUT/relax
+#PBS
+
+#NB Change the restraintmask!
+
+module purge
+module add chpc/amber/18/openmpi-1.8.8/gcc-4.9.0
+source $AMBERHOME/amber.sh
+
+pushd /mnt/lustre/users/jrocha/mutations_g6pd/MUT/relax
+
+TOPOLOGY=G6PD_MUT_vacuotomin.prmtop
+STARTCONF=G6PD_MUT_vacuotomin.rst7
+MUTNAME=MUT
+
+cat << eof > relax.in
+Vacuo - Minimise 
+&cntrl
+imin = 1,
+maxcyc = 650,
+ncyc = 250,
+ntb = 0,
+igb = 1,
+cut = 12, 
+ntpr = 10, 
+ntr= 1, 
+restraint_wt=2.0,
+restraintmask=':1-161,163-432,434-647,649-918,920-973'
+/ 
+eof
+
+
+exe=$AMBERHOME/bin/sander.MPI
+mpirun -np 48 $exe -O -i relax.in -o G6PD_${MUTNAME}_vacminned.out -p $TOPOLOGY -c $STARTCONF -r G6PD_${MUTNAME}_vacminned.rst -ref $STARTCONF
+popd

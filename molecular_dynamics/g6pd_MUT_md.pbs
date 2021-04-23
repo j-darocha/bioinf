@@ -1,0 +1,271 @@
+#!/bin/bash
+#PBS -P CBBI0930
+#PBS -N md_G6PD_MUT
+#PBS -l select=1:ncpus=2:ngpus=1
+#PBS -l walltime=12:00:00
+#PBS -q gpu_1
+#PBS -m abe
+#PBS -M jdarocha1@gmail.com
+#PBS -o /mnt/lustre/users/jrocha/mutations_g6pd/MUT/MUT_output
+#PBS -e /mnt/lustre/users/jrocha/mutations_g6pd/MUT/MUT_error
+#PBS
+
+module purge
+module add chpc/amber/18/cuda10.1/openmpi-3.1.0/gcc-6.1.0
+source $AMBERHOME/amber.sh
+
+pushd /mnt/lustre/users/jrocha/mutations_g6pd/MUT
+exe=$AMBERHOME/bin/pmemd.cuda
+
+MUT=MUT
+DATAHOME=/mnt/lustre/users/jrocha/mutations_g6pd/MUT
+TOPOLOGY=G6PD_${MUT}_startMD.prmtop
+STARTINGCONF=G6PD_${MUT}_startMD.rst7
+base=$(basename $STARTINGCONF .rst7)
+
+#DONT FORGET TO CHANGE FIRST RESMASK
+
+nproduction=5000000
+
+#######################################################
+# Energy minimization 1 - ARG replacement and solvent #
+#######################################################
+mkdir min1_step1
+cd min1_step1
+
+cat << eof > energy_min1.in
+minimization parameters
+&cntrl
+      	imin = 1,
+        maxcyc = 1000,
+        ncyc = 500,
+        cut = 12,
+        ntb = 1,
+        ntr = 1, ! turn on the cartezian restraints
+        igb = 0,
+        drms = 0.01,
+        restraint_wt=500.0, !force constant for restraint (kcal*mol*.A^2)
+        restraintmask=':1-161,163-432,434-647,649-918,920-973' ! atoms in residues 1-973 restrained - exclude the residues we replaced with ARG$
+/
+
+eof
+
+
+$exe -O -i energy_min1.in -o energy_min1.out -p $DATAHOME/$TOPOLOGY -c $DATAHOME/$STARTINGCONF -r $base-min1.nc -ref $DATAHOME/$STARTINGCONF
+
+cd ..
+
+###################################
+# minimization - hold backbone    #
+###################################
+mkdir min2_step2
+cd min2_step2
+cat << eof > energy_min2.in
+minimization parameters
+&cntrl
+      	imin = 1,
+        maxcyc = 10000,
+        ncyc = 500,
+        cut = 12,
+        ntb = 1,
+        ntr = 1, ! turn on the cartezian restraints
+        igb = 0,
+        drms = 0.01,
+        restraint_wt=500.0, !force constant for restraint (kcal*mol*.A^2)
+        restraintmask='@CA,C,O,N' 
+/
+
+eof
+
+$exe -O -i energy_min2.in -o energy_min2.out -p $DATAHOME/$TOPOLOGY -c ../min1_step1/$base-min1.nc -r $base-min2.nc -ref ../min1_step1/$base-min1.nc
+
+cd ..
+
+###################################
+# minimization - whole system     #
+###################################
+mkdir min3_step3
+cd min3_step3
+cat << eof > energy_min3.in
+minimization parameters
+&cntrl
+      	imin = 1,
+        maxcyc = 10000,
+        ncyc = 500,
+        cut = 12,
+        ntb = 1,
+        ntr = 0, ! turn off the cartezian restraints
+        igb = 0,
+        drms = 0.01
+/
+
+eof
+
+$exe -O -i energy_min3.in -o energy_min3.out -p $DATAHOME/$TOPOLOGY -c ../min2_step2/$base-min2.nc -r $base-min3.nc
+
+cd .. 
+
+
+###########################
+# Molecular dynamics stage
+##########################
+# 544564 875451 64613253
+for random in 9646565
+do 
+
+mkdir run${random}
+
+cd run${random} 
+
+dt=0.002 # 2fs time 
+##############################################
+# 1st stage heating: restraining solute 
+##############################################
+mkdir thermation_stage3
+cd thermation_stage3
+cat << eof > heating.in
+equilibration_second_stage
+&cntrl
+  imin   = 0,
+  irest  = 0, !run a new simulation
+  ntx    = 1,
+  ntb    = 1,
+  cut    = 12.0,
+  ntr    = 1,
+  ntc    = 2,    ! 2 to use SHAKE
+  tempi  = 50.0,
+  temp0  = 300.0,
+  ig     = $random , ! set this to -1 for random velocity 
+  ntt    = 3, ! Langevin dynamics
+  gamma_ln = 5.0, 
+  nstlim = 10000, 
+  dt = $dt, 
+  ntpr = 100, ! print frequency
+  ntwx = 0, ! every ntwx write to traj file 
+  ntwr = 50000, ! frequency for writing restart file 
+  restraint_wt= 10 ,  ! force constant for restraint 
+  restraintmask=':1-975', ! restrain residues including the ligand 
+/
+eof
+
+$exe -O -i heating.in -o heating.out -p $DATAHOME/$TOPOLOGY -c ../../min3_step3/$base-min3.nc -r $base-heating_restart.nc -x $base-heating.nc -ref ../../min3_step3/$base-min3.nc
+cd ..
+
+
+mkdir lift_restraints_stage4
+cd lift_restraints_stage4
+ 
+restart=../thermation_stage3/$base-heating_restart.nc
+
+for restraint in 10 9 8 7 6 5 4 3 2 1 0
+do
+cat << eof > rmd${restraint}.in
+equilibration_second_stage
+&cntrl
+  imin = 0,
+  irest = 1,
+  ntx = 5,
+  ntb = 2,
+  pres0 = 1.0,
+  ntp = 1,
+  ntt = 3,   ! ntb 2 for constant pressure, 1 constant volume
+  gamma_ln = 5.0,
+  taup=2.0,
+  cut = 12.0,
+  ntr = 0,
+  ntc = 2,         ! ntc should change to 2 to activate SHAKE
+  tempi = 300.0,
+  temp0 = 300.0,
+  ioutfm = 1,
+  nstlim = 40000,
+  dt = $dt,
+  ntpr = 100,
+  ntwx = 0,
+  ntwr = 10000,
+  restraint_wt= $restraint, 
+  restraintmask=':1-975'
+/
+eof
+
+$exe -O -i rmd$restraint.in -o rmd${restraint}.out -p $DATAHOME/$TOPOLOGY -c $restart -r $base-rmd.restart${restraint}.nc -x $base-rmd${restraint}.nc -ref ../min3_step3/$base-min3.nc
+restart=$base-rmd.restart${restraint}.nc
+
+cat << eof > reduce.in
+trajin $base-rmd${restraint}.nc  
+strip :WAT 
+strip :Cl-
+strip :K+
+center mass origin
+trajout $base-rmd${restraint}_stripped.nc netcdf nobox
+eof
+
+#cpptraj -p $DATAHOME/$TOPOLOGY -i  reduce.in
+done
+cd ..
+
+#production goes here
+######################
+# Production stage
+#####################
+mkdir production_md
+cd production_md
+cat << eof > unrest.in
+equilibration_second_stage
+&cntrl
+  imin = 0,
+  irest = 1,
+  ntx = 5,
+  ntb = 1,
+  ntp = 0,
+  ntt = 1,
+  pres0 = 1.0,
+  taup = 2,
+  cut = 12.0,
+  ntr = 0,
+  ntc = 2,
+  tempi = 300.0, 
+  temp0 = 300.0,
+  ioutfm = 1,
+  nstlim = $nproduction, 
+  dt = $dt,
+  ntpr = 10000, 
+  ntwx = 5000, 
+  ntwr = 100000  ! write to traj each 10 ps
+ /
+eof
+
+
+$exe -O -i unrest.in -o production${random}.out -p $DATAHOME/$TOPOLOGY -c ../lift_restraints_stage4/*-rmd.restart0.nc -r production_${MUT}_${random}.rst -x production_${MUT}_${random}.nc
+
+cat << eof > reduce.in
+trajin production_${MUT}_${random}.nc
+image origin center 
+autoimage
+strip :WAT,Cl-,K+ outprefix stripped
+fixatomorder outprefix reordered
+trajout production_${MUT}_stripped${random}_10ns.nc netcdf nobox
+eof
+
+cpptraj -p $DATAHOME/$TOPOLOGY -i  reduce.in
+
+#rm production${random}.nc
+
+mkdir ../../production_md
+
+cp production_${MUT}_${random}.nc  ../../production_md
+
+cp production_${MUT}_stripped${random}_10ns.nc ../../production_md
+
+cp production_${MUT}_${random}.rst  ../../production_md
+
+cp production_${MUT}_${random}.rst  ../../
+
+
+cd .. 
+# ~~~~~~~~~~~~~~~~~~~~~~~end of the production stage
+
+cd .. 
+
+done
+
+popd

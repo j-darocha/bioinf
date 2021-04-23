@@ -1,0 +1,78 @@
+#!/bin/bash
+#PBS -P CBBI0930
+#PBS -N md_G6PD_MUT_35ns
+#PBS -l select=1:ncpus=2:ngpus=1
+#PBS -l walltime=12:00:00
+#PBS -q gpu_1
+#PBS -m abe
+#PBS -M jdarocha1@gmail.com
+#PBS -o /mnt/lustre/users/jrocha/mutations_g6pd/MUT/md_MUT_output
+#PBS -e /mnt/lustre/users/jrocha/mutations_g6pd/MUT/md_MUT_error
+#PBS
+
+module purge
+module add chpc/amber/18/cuda10.1/openmpi-3.1.0/gcc-6.1.0
+source $AMBERHOME/amber.sh
+
+pushd /mnt/lustre/users/jrocha/mutations_g6pd/MUT/
+exe=$AMBERHOME/bin/pmemd.cuda
+
+DATAHOME=/mnt/lustre/users/jrocha/mutations_g6pd/MUT/
+TOPOLOGY=G6PD_MUT_startMD.prmtop
+STARTINGCONF=production_MUT_9646565.rst
+base=$(basename $STARTINGCONF .rst7)
+timestage=35ns
+MUT=MUT
+
+#production goes here
+######################
+# Production stage
+#####################
+mkdir production_md
+cd production_md
+
+cat << eof > unrest.in
+equilibration_second_stage
+&cntrl
+  imin = 0,
+  irest = 1,
+  ntx = 5,
+  ntb = 1,
+  ntp = 0,
+  ntt = 1,
+  pres0 = 1.0,
+  taup = 2,
+  cut = 12.0,
+  ntr = 0,
+  ntc = 2,
+  tempi = 300.0, 
+  temp0 = 300.0,
+  ioutfm = 1,
+  nstlim = 12500000, 
+  dt = 0.002,
+  ntpr = 10000, 
+  ntwx = 5000, 
+  ntwr = 100000  ! write to traj each 10 ps
+ /
+eof
+
+
+$exe -O -i unrest.in -o production_${MUT}_${timestage}.out -p $DATAHOME/$TOPOLOGY -c $DATAHOME/$STARTINGCONF -r production_${MUT}_${timestage}.rst -x production_${MUT}_${timestage}.nc
+
+cat << eof > reduce.in
+trajin production_${MUT}_${timestage}.nc
+image origin center 
+autoimage
+strip :WAT,Cl-,K+ outprefix stripped
+fixatomorder outprefix reordered
+trajout production_${MUT}_stripped${timestage}.nc netcdf nobox
+eof
+
+cpptraj -p $DATAHOME/$TOPOLOGY -i  reduce.in
+
+cp production_${MUT}_${timestage}.rst $DATAHOME
+
+# ~~~~~~~~~~~~~~~~~~~~~~~end of the production stage
+
+
+popd
